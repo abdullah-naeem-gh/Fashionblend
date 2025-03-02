@@ -32,7 +32,7 @@ export default function WelcomeScreen() {
       if (isSignUp) {
         console.log('Starting signup process...')
         
-        // Sign up
+        // Sign up - will create user immediately since email confirmation is off
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -53,7 +53,7 @@ export default function WelcomeScreen() {
         // If brand account, create brand first
         if (accountType === 'brand' && signUpData.user) {
           try {
-            console.log('Calling create_brand_and_profile function...')
+            console.log('Creating brand profile...')
             
             // Call the database function to create brand and profile
             const { error: funcError } = await supabase.rpc('create_brand_and_profile', {
@@ -69,7 +69,8 @@ export default function WelcomeScreen() {
               throw funcError
             }
             
-            console.log('Brand and profile created successfully via function')
+            console.log('Brand and profile created successfully')
+            Alert.alert('Success', 'Your brand account has been created successfully')
           } catch (innerError: any) {
             console.error('Error in brand creation flow:', innerError)
             Alert.alert('Brand Creation Error', innerError.message || 'Failed to create brand')
@@ -95,9 +96,9 @@ export default function WelcomeScreen() {
           }
           
           console.log('User profile created successfully')
+          Alert.alert('Success', 'Your account has been created successfully')
         }
 
-        Alert.alert('Success', 'Please check your email to verify your account')
         setStep(1) // Reset step
       } else {
         // Sign in

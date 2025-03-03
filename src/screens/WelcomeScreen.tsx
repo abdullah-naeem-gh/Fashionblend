@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, TextInput, Alert } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { supabase } from '../lib/supabase'
 
@@ -245,32 +245,43 @@ export default function WelcomeScreen() {
   }
 
   return (
-    <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80' }}
-      style={styles.background}
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
     >
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.8)']}
-        style={styles.gradient}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.container}>
-            <View style={styles.logoContainer}>
-              <Text style={styles.logoText}>FashionBlend</Text>
-            </View>
-            
-            <View style={styles.contentContainer}>
-              <Text style={styles.title}>Welcome to FashionBlend</Text>
-              <Text style={styles.subtitle}>
-                Discover clothes, create outfits, get inspired by fashion from around the world
-              </Text>
-              
-              {renderForm()}
-            </View>
-          </View>
-        </ScrollView>
-      </LinearGradient>
-    </ImageBackground>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ImageBackground
+          source={{ uri: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80' }}
+          style={styles.background}
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
+            style={styles.gradient}
+          >
+            <ScrollView 
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.container}>
+                <View style={styles.logoContainer}>
+                  <Text style={styles.logoText}>FashionBlend</Text>
+                </View>
+                
+                <View style={styles.contentContainer}>
+                  <Text style={styles.title}>Welcome to FashionBlend</Text>
+                  <Text style={styles.subtitle}>
+                    Discover clothes, create outfits, get inspired by fashion from around the world
+                  </Text>
+                  
+                  {renderForm()}
+                </View>
+              </View>
+            </ScrollView>
+          </LinearGradient>
+        </ImageBackground>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   )
 }
 
@@ -287,10 +298,11 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     justifyContent: 'space-between',
+    minHeight: '100%',
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: 60,
+    marginTop: Platform.OS === 'ios' ? 60 : 40,
   },
   logoText: {
     fontSize: 32,
@@ -301,7 +313,8 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
   },
   contentContainer: {
-    marginBottom: 50,
+    marginTop: 'auto',
+    marginBottom: Platform.OS === 'ios' ? 20 : 10,
   },
   title: {
     fontSize: 32,
@@ -394,6 +407,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    paddingBottom: Platform.OS === 'ios' ? 50 : 20,
   },
   formTitle: {
     fontSize: 24,

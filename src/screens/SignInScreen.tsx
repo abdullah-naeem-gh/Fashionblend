@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, KeyboardAvoidingView, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../context/AuthContext'
 import type { AuthScreenNavigationProp } from '../types/navigation'
@@ -24,52 +24,69 @@ export default function SignInScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign In</Text>
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      
-      <TouchableOpacity 
-        style={styles.button}
-        onPress={handleSignIn}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? 'Signing in...' : 'Sign In'}
-        </Text>
-      </TouchableOpacity>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.container}>
+            <Text style={styles.title}>Sign In</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+            
+            <TouchableOpacity 
+              style={styles.button}
+              onPress={handleSignIn}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? 'Signing in...' : 'Sign In'}
+              </Text>
+            </TouchableOpacity>
 
-      <TouchableOpacity 
-        onPress={() => navigation.navigate('SignUp')}
-      >
-        <Text style={styles.link}>
-          Don't have an account? Sign Up
-        </Text>
-      </TouchableOpacity>
-    </View>
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('SignUp')}
+            >
+              <Text style={styles.link}>
+                Don't have an account? Sign Up
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+  },
   container: {
     flex: 1,
     padding: 20,
     justifyContent: 'center',
+    minHeight: '100%',
   },
   title: {
     fontSize: 24,

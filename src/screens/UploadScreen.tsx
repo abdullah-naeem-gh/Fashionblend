@@ -1,11 +1,22 @@
-import React, { useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ScrollView, Alert } from 'react-native'
+import React, { useState, useRef } from 'react'
+import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ScrollView, Alert, Modal, Pressable } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import AppHeader from '../components/AppHeader'
 import { decode } from 'base64-arraybuffer'
+
+type Point = {
+  x: number
+  y: number
+  number: number
+  clothingItem?: {
+    id: number
+    title: string
+    brand: string
+  }
+}
 
 export default function UploadScreen() {
   const [image, setImage] = useState<string | null>(null)
@@ -16,11 +27,16 @@ export default function UploadScreen() {
   const [brand, setBrand] = useState('')
   const [category, setCategory] = useState('')
   const [loading, setLoading] = useState(false)
+  const [points, setPoints] = useState<Point[]>([])
+  const [showItemSelector, setShowItemSelector] = useState(false)
+  const [selectedPoint, setSelectedPoint] = useState<Point | null>(null)
+  const [availableItems, setAvailableItems] = useState<any[]>([])
+  const imageRef = useRef<View>(null)
   
   const { session, userRole, brandInfo } = useAuth()
 
   const pickImage = async () => {
-    if (uploadType === 'clothes') return // Disable image picker for clothes
+    if (uploadType === 'clothes') return
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -32,7 +48,56 @@ export default function UploadScreen() {
 
     if (!result.canceled) {
       setImage(result.assets[0].uri)
+      // Reset points when new image is selected
+      setPoints([])
     }
+  }
+
+  const handleImagePress = async (event: any) => {
+    if (uploadType !== 'outfit' || !image) return
+
+    // Get image dimensions and position
+    const { locationX, locationY } = event.nativeEvent
+    const pointNumber = points.length + 1
+
+    const newPoint: Point = {
+      x: locationX,
+      y: locationY,
+      number: pointNumber
+    }
+
+    setPoints([...points, newPoint])
+    setSelectedPoint(newPoint)
+    
+    // Fetch available clothing items
+    try {
+      const { data, error } = await supabase
+        .from('clothing_items')
+        .select('id, title, brand')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setAvailableItems(data)
+      setShowItemSelector(true)
+    } catch (error) {
+      console.error('Error fetching clothing items:', error)
+      Alert.alert('Error', 'Failed to load clothing items')
+    }
+  }
+
+  const handleItemSelect = (item: any) => {
+    if (!selectedPoint) return
+
+    const updatedPoints = points.map(point => {
+      if (point.number === selectedPoint.number) {
+        return { ...point, clothingItem: item }
+      }
+      return point
+    })
+
+    setPoints(updatedPoints)
+    setShowItemSelector(false)
+    setSelectedPoint(null)
   }
 
   const handleUpload = async () => {
@@ -41,13 +106,13 @@ export default function UploadScreen() {
       return
     }
 
-    if (uploadType === 'clothes' && !imageUrl) {
-      Alert.alert('Missing Information', 'Please provide an image URL')
+    if (uploadType === 'outfit' && (!image || points.length === 0)) {
+      Alert.alert('Missing Information', 'Please select an image and add at least one item point')
       return
     }
 
-    if (uploadType === 'outfit' && !image) {
-      Alert.alert('Missing Information', 'Please select an image')
+    if (uploadType === 'clothes' && !imageUrl) {
+      Alert.alert('Missing Information', 'Please provide an image URL')
       return
     }
 
@@ -135,7 +200,8 @@ export default function UploadScreen() {
 
         if (insertError) throw insertError
       } else {
-        const { error: insertError } = await supabase
+        // First insert the outfit post
+        const { data: outfitData, error: outfitError } = await supabase
           .from('outfit_posts')
           .insert({
             user_id: session.user.id,
@@ -145,8 +211,25 @@ export default function UploadScreen() {
             likes_count: 0,
             created_at: new Date().toISOString()
           })
+          .select()
 
-        if (insertError) throw insertError
+        if (outfitError) throw outfitError
+
+        // Then insert the outfit points
+        const outfitId = outfitData[0].id
+        const pointsData = points.map(point => ({
+          outfit_id: outfitId,
+          clothing_item_id: point.clothingItem?.id,
+          x_position: point.x,
+          y_position: point.y,
+          point_number: point.number
+        }))
+
+        const { error: pointsError } = await supabase
+          .from('outfit_points')
+          .insert(pointsData)
+
+        if (pointsError) throw pointsError
       }
 
       // Success
@@ -159,6 +242,7 @@ export default function UploadScreen() {
       setBrand('')
       setCategory('')
       setUploadType(null)
+      setPoints([])
 
     } catch (error: any) {
       console.error('Upload error:', error)
@@ -240,9 +324,32 @@ export default function UploadScreen() {
         </View>
         
         {uploadType === 'outfit' ? (
-          <TouchableOpacity style={styles.imageSelector} onPress={pickImage}>
+          <TouchableOpacity 
+            style={styles.imageSelector} 
+            onPress={image ? undefined : pickImage}
+            ref={imageRef}
+          >
             {image ? (
-              <Image source={{ uri: image }} style={styles.selectedImage} />
+              <Pressable onPress={handleImagePress} style={styles.imageContainer}>
+                <Image source={{ uri: image }} style={styles.selectedImage} />
+                {points.map((point, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.point,
+                      {
+                        left: point.x - 12,
+                        top: point.y - 12,
+                      }
+                    ]}
+                  >
+                    <Text style={styles.pointNumber}>{point.number}</Text>
+                  </View>
+                ))}
+                <Text style={styles.tapInstructions}>
+                  Tap on the image to add item points
+                </Text>
+              </Pressable>
             ) : (
               <View style={styles.imagePlaceholder}>
                 <Ionicons name="camera-outline" size={40} color="#666" />
@@ -301,6 +408,22 @@ export default function UploadScreen() {
               />
             </>
           )}
+
+          {uploadType === 'outfit' && points.length > 0 && (
+            <View style={styles.pointsList}>
+              <Text style={styles.pointsTitle}>Tagged Items:</Text>
+              {points.map((point, index) => (
+                <View key={index} style={styles.pointItem}>
+                  <Text style={styles.pointItemNumber}>{point.number}.</Text>
+                  <Text style={styles.pointItemText}>
+                    {point.clothingItem 
+                      ? `${point.clothingItem.title} by ${point.clothingItem.brand}`
+                      : 'Item not selected'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
           
           <TouchableOpacity 
             style={[
@@ -316,6 +439,37 @@ export default function UploadScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showItemSelector}
+        onRequestClose={() => setShowItemSelector(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Clothing Item</Text>
+            <ScrollView style={styles.itemList}>
+              {availableItems.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.itemOption}
+                  onPress={() => handleItemSelect(item)}
+                >
+                  <Text style={styles.itemOptionTitle}>{item.title}</Text>
+                  <Text style={styles.itemOptionBrand}>{item.brand}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowItemSelector(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -368,10 +522,42 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: '#f5f5f5',
   },
+  imageContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
   selectedImage: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+  },
+  point: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  pointNumber: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  tapInstructions: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 8,
+    fontSize: 14,
   },
   imagePlaceholder: {
     width: '100%',
@@ -429,5 +615,75 @@ const styles = StyleSheet.create({
   brandRole: {
     fontSize: 16,
     color: '#666',
+  },
+  pointsList: {
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  pointsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  pointItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pointItemNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  pointItemText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  itemList: {
+    maxHeight: 400,
+  },
+  itemOption: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  itemOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  itemOptionBrand: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  modalCloseButton: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
   },
 }); 

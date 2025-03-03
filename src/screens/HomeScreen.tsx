@@ -38,6 +38,16 @@ type OutfitItemType = {
   likes_count: number
   user_id: string
   created_at: string
+  points?: Array<{
+    point_number: number
+    x_position: number
+    y_position: number
+    clothing_item?: {
+      id: number
+      title: string
+      brand: string
+    }
+  }>
 }
 
 function ClothingItem({ item }: { item: ClothingItemType }) {
@@ -146,6 +156,7 @@ function ClothingItem({ item }: { item: ClothingItemType }) {
 
 function OutfitItem({ item }: { item: OutfitItemType }) {
   const [isLiked, setIsLiked] = useState(false)
+  const [showItems, setShowItems] = useState(false)
   const { session } = useAuth()
 
   useEffect(() => {
@@ -219,13 +230,43 @@ function OutfitItem({ item }: { item: OutfitItemType }) {
   return (
     <View style={styles.fullScreenItem}>
       <Image source={{ uri: item.image_url }} style={styles.fullScreenImage} />
+      {item.points?.map((point, index) => (
+        <View
+          key={index}
+          style={[
+            styles.point,
+            {
+              left: point.x_position - 12,
+              top: point.y_position - 12,
+            }
+          ]}
+        >
+          <Text style={styles.pointNumber}>{point.point_number}</Text>
+        </View>
+      ))}
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
-        style={styles.itemOverlay}
+        style={[styles.itemOverlay, showItems && styles.expandedOverlay]}
       >
         <View style={styles.itemInfo}>
           <Text style={styles.itemTitle}>{item.title}</Text>
           <Text style={styles.itemSubtitle}>by {item.creator_name}</Text>
+          
+          {showItems && item.points && (
+            <View style={styles.itemsList}>
+              <Text style={styles.itemsTitle}>Featured Items:</Text>
+              {item.points.map((point, index) => (
+                <View key={index} style={styles.itemRow}>
+                  <Text style={styles.itemNumber}>{point.point_number}.</Text>
+                  <Text style={styles.itemDetails}>
+                    {point.clothing_item 
+                      ? `${point.clothing_item.title} by ${point.clothing_item.brand}`
+                      : 'Item not available'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
         <View style={styles.interactionBar}>
           <TouchableOpacity style={styles.interactionButton} onPress={handleLike}>
@@ -236,8 +277,15 @@ function OutfitItem({ item }: { item: OutfitItemType }) {
             />
             <Text style={styles.interactionText}>{item.likes_count || 0}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.interactionButton}>
-            <Ionicons name="bookmark-outline" size={32} color="#fff" />
+          <TouchableOpacity 
+            style={styles.interactionButton}
+            onPress={() => setShowItems(!showItems)}
+          >
+            <Ionicons 
+              name={showItems ? "chevron-down-outline" : "chevron-up-outline"} 
+              size={32} 
+              color="#fff" 
+            />
           </TouchableOpacity>
           <TouchableOpacity style={styles.interactionButton}>
             <Ionicons name="share-social-outline" size={32} color="#fff" />
@@ -344,8 +392,36 @@ function OutfitsFeed() {
 
       if (userError) throw userError
 
-      // Create a map of user data
+      // Fetch outfit points and their corresponding clothing items
+      const outfitIds = outfitData.map(outfit => outfit.id)
+      const { data: pointsData, error: pointsError } = await supabase
+        .from('outfit_points')
+        .select(`
+          *,
+          clothing_items (
+            id,
+            title,
+            brand
+          )
+        `)
+        .in('outfit_id', outfitIds)
+
+      if (pointsError) throw pointsError
+
+      // Create maps for quick lookups
       const userMap = new Map(userData.map(user => [user.id, user]))
+      const pointsMap = new Map()
+      pointsData?.forEach(point => {
+        if (!pointsMap.has(point.outfit_id)) {
+          pointsMap.set(point.outfit_id, [])
+        }
+        pointsMap.get(point.outfit_id).push({
+          point_number: point.point_number,
+          x_position: point.x_position,
+          y_position: point.y_position,
+          clothing_item: point.clothing_items
+        })
+      })
       
       // Transform the data to match OutfitItemType
       const transformedOutfits = outfitData.map(outfit => {
@@ -358,7 +434,8 @@ function OutfitsFeed() {
           creator_name: user ? user.name : 'Anonymous',
           likes_count: outfit.likes_count || 0,
           user_id: outfit.user_id,
-          created_at: outfit.created_at
+          created_at: outfit.created_at,
+          points: pointsMap.get(outfit.id) || []
         }
       })
 
@@ -512,5 +589,59 @@ const styles = StyleSheet.create({
   feedContainer: {
     flexGrow: 1,
     paddingBottom: BOTTOM_NAV_HEIGHT + SAFE_AREA_BOTTOM,
+  },
+  point: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+    zIndex: 1,
+  },
+  pointNumber: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  expandedOverlay: {
+    height: '60%',
+  },
+  itemsList: {
+    marginTop: 20,
+  },
+  itemsTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  itemNumber: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
+  },
+  itemDetails: {
+    color: '#fff',
+    fontSize: 16,
+    flex: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
   },
 }); 

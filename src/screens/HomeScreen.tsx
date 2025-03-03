@@ -156,7 +156,7 @@ function ClothingItem({ item }: { item: ClothingItemType }) {
 
 function OutfitItem({ item }: { item: OutfitItemType }) {
   const [isLiked, setIsLiked] = useState(false)
-  const [showItems, setShowItems] = useState(false)
+  const [imageLayout, setImageLayout] = useState({ width: 0, height: 0 })
   const { session } = useAuth()
 
   useEffect(() => {
@@ -227,71 +227,94 @@ function OutfitItem({ item }: { item: OutfitItemType }) {
     }
   }
 
+  const calculatePointPosition = (originalX: number, originalY: number) => {
+    if (imageLayout.width === 0 || imageLayout.height === 0) return { x: 0, y: 0 }
+    
+    // Use the actual image dimensions for scaling
+    return {
+      x: (originalX * imageLayout.width) / width,
+      y: (originalY * imageLayout.height) / width // Use width to maintain aspect ratio
+    }
+  }
+
   return (
-    <View style={styles.fullScreenItem}>
-      <Image source={{ uri: item.image_url }} style={styles.fullScreenImage} />
-      {item.points?.map((point, index) => (
-        <View
-          key={index}
-          style={[
-            styles.point,
-            {
-              left: point.x_position - 12,
-              top: point.y_position - 12,
-            }
-          ]}
+    <View style={styles.outfitContainer}>
+      <View style={styles.outfitCard}>
+        {/* Image Container */}
+        <View 
+          style={styles.outfitImageContainer}
+          onLayout={(event) => {
+            const { width, height } = event.nativeEvent.layout
+            setImageLayout({ width, height })
+          }}
         >
-          <Text style={styles.pointNumber}>{point.point_number}</Text>
+          <Image 
+            source={{ uri: item.image_url }} 
+            style={styles.outfitImage}
+            resizeMode="cover"
+          />
+          {item.points?.map((point, index) => {
+            const position = calculatePointPosition(point.x_position, point.y_position)
+            return (
+              <View
+                key={index}
+                style={[
+                  styles.point,
+                  {
+                    left: position.x - 12,
+                    top: position.y - 12,
+                  }
+                ]}
+              >
+                <Text style={styles.pointNumber}>{point.point_number}</Text>
+              </View>
+            )
+          })}
         </View>
-      ))}
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
-        style={[styles.itemOverlay, showItems && styles.expandedOverlay]}
-      >
-        <View style={styles.itemInfo}>
-          <Text style={styles.itemTitle}>{item.title}</Text>
-          <Text style={styles.itemSubtitle}>by {item.creator_name}</Text>
-          
-          {showItems && item.points && (
-            <View style={styles.itemsList}>
-              <Text style={styles.itemsTitle}>Featured Items:</Text>
-              {item.points.map((point, index) => (
-                <View key={index} style={styles.itemRow}>
-                  <Text style={styles.itemNumber}>{point.point_number}.</Text>
-                  <Text style={styles.itemDetails}>
-                    {point.clothing_item 
-                      ? `${point.clothing_item.title} by ${point.clothing_item.brand}`
-                      : 'Item not available'}
-                  </Text>
-                </View>
-              ))}
+
+        {/* Title and Creator */}
+        <View style={styles.outfitInfo}>
+          <Text style={styles.outfitTitle}>{item.title}</Text>
+          <Text style={styles.outfitCreator}>by {item.creator_name}</Text>
+        </View>
+
+        {/* Featured Items Section */}
+        <View style={styles.featuredItemsContainer}>
+          <Text style={styles.featuredItemsTitle}>Featured Items:</Text>
+          {item.points?.map((point, index) => (
+            <View key={index} style={styles.featuredItemRow}>
+              <View style={styles.itemNumberContainer}>
+                <Text style={styles.itemNumber}>{point.point_number}</Text>
+              </View>
+              <View style={styles.itemDetailsContainer}>
+                {point.clothing_item ? (
+                  <>
+                    <Text style={styles.itemName}>{point.clothing_item.title}</Text>
+                    <Text style={styles.itemBrand}>by {point.clothing_item.brand}</Text>
+                  </>
+                ) : (
+                  <Text style={styles.itemUnavailable}>Item not available</Text>
+                )}
+              </View>
             </View>
-          )}
+          ))}
         </View>
-        <View style={styles.interactionBar}>
+
+        {/* Interaction Bar */}
+        <View style={styles.outfitInteractionBar}>
           <TouchableOpacity style={styles.interactionButton} onPress={handleLike}>
             <Ionicons 
               name={isLiked ? "heart" : "heart-outline"} 
-              size={32} 
-              color={isLiked ? "#ff3b30" : "#fff"} 
+              size={24} 
+              color={isLiked ? "#ff3b30" : "#000"} 
             />
-            <Text style={styles.interactionText}>{item.likes_count || 0}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.interactionButton}
-            onPress={() => setShowItems(!showItems)}
-          >
-            <Ionicons 
-              name={showItems ? "chevron-down-outline" : "chevron-up-outline"} 
-              size={32} 
-              color="#fff" 
-            />
+            <Text style={styles.outfitInteractionText}>{item.likes_count || 0}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.interactionButton}>
-            <Ionicons name="share-social-outline" size={32} color="#fff" />
+            <Ionicons name="share-social-outline" size={24} color="#000" />
           </TouchableOpacity>
         </View>
-      </LinearGradient>
+      </View>
     </View>
   )
 }
@@ -608,16 +631,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   expandedOverlay: {
-    height: '60%',
+    height: '70%', // Increased height for better visibility of items
   },
   itemsList: {
     marginTop: 20,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
   },
   itemsTitle: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 10,
+    marginBottom: 15,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 10,
@@ -625,23 +651,118 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 15,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10,
+    padding: 12,
+  },
+  itemNumberContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   itemNumber: {
     color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  itemDetailsContainer: {
+    flex: 1,
+  },
+  itemName: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    marginRight: 8,
+    marginBottom: 4,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 10,
   },
-  itemDetails: {
-    color: '#fff',
-    fontSize: 16,
-    flex: 1,
+  itemBrand: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 10,
+  },
+  itemUnavailable: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  imageContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  outfitContainer: {
+    padding: 16,
+    backgroundColor: '#f5f5f5',
+  },
+  outfitCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  outfitImageContainer: {
+    width: '100%',
+    aspectRatio: 3/4,
+    position: 'relative',
+  },
+  outfitImage: {
+    width: '100%',
+    height: '100%',
+  },
+  outfitInfo: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  outfitTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  outfitCreator: {
+    fontSize: 16,
+    color: '#666',
+  },
+  featuredItemsContainer: {
+    padding: 16,
+  },
+  featuredItemsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  featuredItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+  },
+  outfitInteractionBar: {
+    flexDirection: 'row',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  outfitInteractionText: {
+    marginLeft: 6,
+    fontSize: 14,
+    color: '#000',
   },
 }); 

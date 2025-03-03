@@ -6,9 +6,17 @@ import { useAuth } from '../context/AuthContext'
 import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
 import { Alert } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 
 const TopTab = createMaterialTopTabNavigator()
 const { width, height } = Dimensions.get('window')
+
+// Calculate content height (full height minus header, tab bar, and bottom nav)
+const HEADER_HEIGHT = 60 // Approximate header height
+const TAB_BAR_HEIGHT = 48 // Material Top Tab height
+const BOTTOM_NAV_HEIGHT = 80 // Approximate bottom nav height
+const SAFE_AREA_BOTTOM = 34 // Safe area padding for notched devices
+const CONTENT_HEIGHT = height - HEADER_HEIGHT - TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT - SAFE_AREA_BOTTOM
 
 // Add these types at the top of the file
 type ClothingItemType = {
@@ -26,6 +34,7 @@ type OutfitItemType = {
   image_url: string
   title: string
   creator: string
+  creator_name: string
   likes_count: number
   user_id: string
   created_at: string
@@ -106,7 +115,10 @@ function ClothingItem({ item }: { item: ClothingItemType }) {
   return (
     <View style={styles.fullScreenItem}>
       <Image source={{ uri: item.image_url }} style={styles.fullScreenImage} />
-      <View style={styles.itemOverlay}>
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
+        style={styles.itemOverlay}
+      >
         <View style={styles.itemInfo}>
           <Text style={styles.itemTitle}>{item.title}</Text>
           <Text style={styles.itemSubtitle}>{item.brand}</Text>
@@ -115,19 +127,19 @@ function ClothingItem({ item }: { item: ClothingItemType }) {
           <TouchableOpacity style={styles.interactionButton} onPress={handleLike}>
             <Ionicons 
               name={isLiked ? "heart" : "heart-outline"} 
-              size={28} 
+              size={32} 
               color={isLiked ? "#ff3b30" : "#fff"} 
             />
             <Text style={styles.interactionText}>{item.likes_count || 0}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.interactionButton}>
-            <Ionicons name="bookmark-outline" size={28} color="#fff" />
+            <Ionicons name="bookmark-outline" size={32} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.interactionButton}>
-            <Ionicons name="share-social-outline" size={28} color="#fff" />
+            <Ionicons name="share-social-outline" size={32} color="#fff" />
           </TouchableOpacity>
         </View>
-      </View>
+      </LinearGradient>
     </View>
   )
 }
@@ -207,28 +219,31 @@ function OutfitItem({ item }: { item: OutfitItemType }) {
   return (
     <View style={styles.fullScreenItem}>
       <Image source={{ uri: item.image_url }} style={styles.fullScreenImage} />
-      <View style={styles.itemOverlay}>
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
+        style={styles.itemOverlay}
+      >
         <View style={styles.itemInfo}>
           <Text style={styles.itemTitle}>{item.title}</Text>
-          <Text style={styles.itemSubtitle}>by {item.creator}</Text>
+          <Text style={styles.itemSubtitle}>by {item.creator_name}</Text>
         </View>
         <View style={styles.interactionBar}>
           <TouchableOpacity style={styles.interactionButton} onPress={handleLike}>
             <Ionicons 
               name={isLiked ? "heart" : "heart-outline"} 
-              size={28} 
+              size={32} 
               color={isLiked ? "#ff3b30" : "#fff"} 
             />
             <Text style={styles.interactionText}>{item.likes_count || 0}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.interactionButton}>
-            <Ionicons name="bookmark-outline" size={28} color="#fff" />
+            <Ionicons name="bookmark-outline" size={32} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.interactionButton}>
-            <Ionicons name="share-social-outline" size={28} color="#fff" />
+            <Ionicons name="share-social-outline" size={32} color="#fff" />
           </TouchableOpacity>
         </View>
-      </View>
+      </LinearGradient>
     </View>
   )
 }
@@ -295,10 +310,11 @@ function ClothesFeed() {
       renderItem={({ item }) => <ClothingItem item={item} />}
       keyExtractor={item => item.id}
       pagingEnabled
-      snapToInterval={height - 120}
+      snapToInterval={CONTENT_HEIGHT}
       snapToAlignment="start"
       decelerationRate="fast"
       showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.feedContainer}
     />
   )
 }
@@ -310,28 +326,41 @@ function OutfitsFeed() {
 
   const fetchOutfits = async () => {
     try {
-      const { data, error } = await supabase
+      // First fetch outfit posts
+      const { data: outfitData, error: outfitError } = await supabase
         .from('outfit_posts')
-        .select(`
-          *,
-          likes_count,
-          user_id
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(20)
 
-      if (error) throw error
+      if (outfitError) throw outfitError
+
+      // Then fetch user profiles for these posts
+      const userIds = outfitData.map(outfit => outfit.user_id)
+      const { data: userData, error: userError } = await supabase
+        .from('user_profiles')
+        .select('id, name')
+        .in('id', userIds)
+
+      if (userError) throw userError
+
+      // Create a map of user data
+      const userMap = new Map(userData.map(user => [user.id, user]))
       
       // Transform the data to match OutfitItemType
-      const transformedOutfits = data.map(outfit => ({
-        id: outfit.id,
-        image_url: outfit.image_url,
-        title: outfit.title,
-        creator: outfit.user_id, // For now just show user_id, we can fetch usernames later
-        likes_count: outfit.likes_count || 0,
-        user_id: outfit.user_id,
-        created_at: outfit.created_at
-      }))
+      const transformedOutfits = outfitData.map(outfit => {
+        const user = userMap.get(outfit.user_id)
+        return {
+          id: outfit.id,
+          image_url: outfit.image_url,
+          title: outfit.title,
+          creator: outfit.user_id,
+          creator_name: user ? user.name : 'Anonymous',
+          likes_count: outfit.likes_count || 0,
+          user_id: outfit.user_id,
+          created_at: outfit.created_at
+        }
+      })
 
       setOutfits(transformedOutfits)
     } catch (error) {
@@ -366,12 +395,13 @@ function OutfitsFeed() {
       renderItem={({ item }) => <OutfitItem item={item} />}
       keyExtractor={item => item.id}
       pagingEnabled
-      snapToInterval={height - 120}
+      snapToInterval={CONTENT_HEIGHT}
       snapToAlignment="start"
       decelerationRate="fast"
       showsVerticalScrollIndicator={false}
       refreshing={refreshing}
       onRefresh={handleRefresh}
+      contentContainerStyle={styles.feedContainer}
     />
   )
 }
@@ -401,7 +431,7 @@ const styles = StyleSheet.create({
   },
   fullScreenItem: {
     width: width,
-    height: height - 120,
+    height: CONTENT_HEIGHT,
     position: 'relative',
   },
   fullScreenImage: {
@@ -414,42 +444,48 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 20,
+    height: '45%', // Increased height for gradient
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingBottom: 30,
   },
   itemInfo: {
     flex: 1,
+    marginBottom: 10,
   },
   itemTitle: {
     color: '#fff',
-    fontSize: 22,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 8,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 10,
   },
   itemSubtitle: {
     color: '#fff',
-    fontSize: 16,
-    marginTop: 5,
+    fontSize: 20,
+    fontWeight: '600',
+    opacity: 0.9,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 10,
   },
   interactionBar: {
     alignItems: 'center',
+    marginLeft: 20,
   },
   interactionButton: {
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 20,
   },
   interactionText: {
     color: '#fff',
     marginTop: 5,
+    fontSize: 16,
     fontWeight: '600',
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: -1, height: 1 },
@@ -474,6 +510,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   feedContainer: {
-    padding: 10,
+    flexGrow: 1,
+    paddingBottom: BOTTOM_NAV_HEIGHT + SAFE_AREA_BOTTOM,
   },
 }); 

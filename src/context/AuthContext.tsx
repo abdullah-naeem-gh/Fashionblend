@@ -32,12 +32,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (event, session) => {
+        console.log('Auth event:', event)
         setSession(session)
+        
         if (session?.user) {
-          fetchUserRole(session.user.id)
+          // Add delay for signup event to allow profile creation to complete
+          if (event === 'SIGNED_IN') {
+            // Wait briefly to allow profile creation to complete
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          }
+          await fetchUserRole(session.user.id)
         } else {
           setUserRole(null)
+          setBrandInfo(null)
         }
         setLoading(false)
       }
@@ -54,7 +62,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .eq('id', userId)
         .single()
 
-      if (error) throw error
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Profile not found, retry after a delay
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          return fetchUserRole(userId)
+        }
+        console.error('Error fetching user role:', error)
+        return
+      }
+
       setUserRole(data.role)
       
       // If user is a brand admin, fetch brand info
@@ -65,11 +82,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           .eq('id', data.brand_id)
           .single()
           
-        if (brandError) throw brandError
+        if (brandError) {
+          console.error('Error fetching brand info:', brandError)
+          return
+        }
         setBrandInfo(brandData)
       }
     } catch (error) {
-      console.error('Error fetching user role:', error)
+      console.error('Error in fetchUserRole:', error)
     }
   }
 

@@ -9,6 +9,7 @@ import { decode } from 'base64-arraybuffer'
 
 export default function UploadScreen() {
   const [image, setImage] = useState<string | null>(null)
+  const [imageUrl, setImageUrl] = useState('')
   const [uploadType, setUploadType] = useState<'outfit' | 'clothes' | null>(null)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -19,6 +20,8 @@ export default function UploadScreen() {
   const { session, userRole, brandInfo } = useAuth()
 
   const pickImage = async () => {
+    if (uploadType === 'clothes') return // Disable image picker for clothes
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -33,78 +36,89 @@ export default function UploadScreen() {
   }
 
   const handleUpload = async () => {
-    if (!image || !uploadType || !session?.user || !title) {
-      Alert.alert('Missing Information', 'Please fill in all required fields and select an image')
+    if (!session?.user || !title) {
+      Alert.alert('Missing Information', 'Please fill in all required fields')
+      return
+    }
+
+    if (uploadType === 'clothes' && !imageUrl) {
+      Alert.alert('Missing Information', 'Please provide an image URL')
+      return
+    }
+
+    if (uploadType === 'outfit' && !image) {
+      Alert.alert('Missing Information', 'Please select an image')
       return
     }
 
     try {
       setLoading(true)
 
-      // 1. Upload image to Supabase Storage with timeout handling
-      const uploadWithTimeout = async () => {
-        const imageResponse = await fetch(image)
-        const imageBlob = await imageResponse.blob()
-        
-        // Reduce file size if needed
-        if (imageBlob.size > 5000000) { // 5MB limit
-          Alert.alert('Error', 'Image size too large. Please choose a smaller image.')
-          return null
+      let finalImageUrl = imageUrl
+
+      if (uploadType === 'outfit') {
+        // Upload image to storage only for outfits
+        const uploadWithTimeout = async () => {
+          const imageResponse = await fetch(image!)
+          const imageBlob = await imageResponse.blob()
+          
+          if (imageBlob.size > 5000000) { // 5MB limit
+            Alert.alert('Error', 'Image size too large. Please choose a smaller image.')
+            return null
+          }
+
+          const reader = new FileReader()
+          
+          return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error('Upload timed out'))
+            }, 30000) // 30 second timeout
+
+            reader.onload = async () => {
+              try {
+                const base64 = reader.result?.toString().split(',')[1]
+                if (!base64) throw new Error('Failed to convert image')
+
+                const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}`
+                const filePath = `${uploadType}/${fileName}.jpg`
+                
+                const { data, error } = await supabase.storage
+                  .from('outfit-images')
+                  .upload(filePath, decode(base64), {
+                    contentType: 'image/jpeg',
+                    cacheControl: '3600'
+                  })
+
+                if (error) throw error
+
+                // Get the signed URL that expires in 7 days
+                const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+                  .from('outfit-images')
+                  .createSignedUrl(filePath, 7 * 24 * 60 * 60) // 7 days in seconds
+
+                if (signedUrlError) throw signedUrlError
+
+                resolve(signedUrlData.signedUrl)
+              } catch (error) {
+                clearTimeout(timeout)
+                reject(error)
+              }
+            }
+
+            reader.onerror = () => {
+              clearTimeout(timeout)
+              reject(new Error('Failed to read file'))
+            }
+
+            reader.readAsDataURL(imageBlob)
+          })
         }
 
-        const reader = new FileReader()
-        
-        return new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error('Upload timed out'))
-          }, 30000) // 30 second timeout
-
-          reader.onload = async () => {
-            try {
-              const base64 = reader.result?.toString().split(',')[1]
-              if (!base64) throw new Error('Failed to convert image')
-
-              const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}`
-              const filePath = `${uploadType}/${fileName}.jpg`
-              
-              const { data, error } = await supabase.storage
-                .from('outfit-images')
-                .upload(filePath, decode(base64), {
-                  contentType: 'image/jpeg',
-                  cacheControl: '3600'
-                })
-
-              if (error) throw error
-
-              // Get the signed URL that expires in 7 days
-              const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-                .from('outfit-images')
-                .createSignedUrl(filePath, 7 * 24 * 60 * 60) // 7 days in seconds
-
-              if (signedUrlError) throw signedUrlError
-
-              const imageUrl = signedUrlData.signedUrl
-              
-              resolve(imageUrl)
-            } catch (error) {
-              clearTimeout(timeout)
-              reject(error)
-            }
-          }
-
-          reader.onerror = () => {
-            clearTimeout(timeout)
-            reject(new Error('Failed to read file'))
-          }
-
-          reader.readAsDataURL(imageBlob)
-        })
+        finalImageUrl = await uploadWithTimeout() as string
+        if (!finalImageUrl) return
       }
 
-      const imageUrl = await uploadWithTimeout()
-      if (!imageUrl) return
-
-      // 2. Insert data into appropriate table
+      // Insert data into appropriate table
       if (uploadType === 'clothes') {
         const { error: insertError } = await supabase
           .from('clothing_items')
@@ -114,7 +128,7 @@ export default function UploadScreen() {
             description,
             brand,
             category,
-            image_url: imageUrl,
+            image_url: finalImageUrl,
             likes_count: 0,
             created_at: new Date().toISOString()
           })
@@ -127,7 +141,7 @@ export default function UploadScreen() {
             user_id: session.user.id,
             title,
             description,
-            image_url: imageUrl,
+            image_url: finalImageUrl,
             likes_count: 0,
             created_at: new Date().toISOString()
           })
@@ -139,6 +153,7 @@ export default function UploadScreen() {
       Alert.alert('Success', 'Your item has been uploaded!')
       // Reset form
       setImage(null)
+      setImageUrl('')
       setTitle('')
       setDescription('')
       setBrand('')
@@ -224,16 +239,29 @@ export default function UploadScreen() {
           </TouchableOpacity>
         </View>
         
-        <TouchableOpacity style={styles.imageSelector} onPress={pickImage}>
-          {image ? (
-            <Image source={{ uri: image }} style={styles.selectedImage} />
-          ) : (
-            <View style={styles.imagePlaceholder}>
-              <Ionicons name="camera-outline" size={40} color="#666" />
-              <Text style={styles.imagePlaceholderText}>Tap to select an image</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        {uploadType === 'outfit' ? (
+          <TouchableOpacity style={styles.imageSelector} onPress={pickImage}>
+            {image ? (
+              <Image source={{ uri: image }} style={styles.selectedImage} />
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <Ionicons name="camera-outline" size={40} color="#666" />
+                <Text style={styles.imagePlaceholderText}>Tap to select an image</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ) : uploadType === 'clothes' ? (
+          <View style={styles.formContainer}>
+            <Text style={styles.label}>Image URL *</Text>
+            <TextInput
+              style={styles.input}
+              value={imageUrl}
+              onChangeText={setImageUrl}
+              placeholder="Enter the image URL"
+              autoCapitalize="none"
+            />
+          </View>
+        ) : null}
         
         <View style={styles.formContainer}>
           <Text style={styles.label}>Title *</Text>
@@ -275,7 +303,10 @@ export default function UploadScreen() {
           )}
           
           <TouchableOpacity 
-            style={styles.uploadButton}
+            style={[
+              styles.uploadButton,
+              loading && styles.uploadButtonDisabled
+            ]}
             onPress={handleUpload}
             disabled={loading}
           >
@@ -353,7 +384,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   formContainer: {
-    marginBottom: 40,
+    marginBottom: 20,
   },
   label: {
     fontSize: 16,
@@ -378,6 +409,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     marginTop: 10,
+  },
+  uploadButtonDisabled: {
+    backgroundColor: '#666',
   },
   uploadButtonText: {
     color: '#fff',

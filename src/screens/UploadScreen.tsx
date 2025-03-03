@@ -18,6 +18,8 @@ type Point = {
   }
 }
 
+type Gender = 'male' | 'female'
+
 export default function UploadScreen() {
   const [image, setImage] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState('')
@@ -32,6 +34,8 @@ export default function UploadScreen() {
   const [selectedPoint, setSelectedPoint] = useState<Point | null>(null)
   const [availableItems, setAvailableItems] = useState<any[]>([])
   const imageRef = useRef<View>(null)
+  const [gender, setGender] = useState<Gender>('male')
+  const [showGenderSelector, setShowGenderSelector] = useState(false)
   
   const { session, userRole, brandInfo } = useAuth()
 
@@ -193,6 +197,7 @@ export default function UploadScreen() {
             description,
             brand,
             category,
+            gender,
             image_url: finalImageUrl,
             likes_count: 0,
             created_at: new Date().toISOString()
@@ -241,6 +246,7 @@ export default function UploadScreen() {
       setDescription('')
       setBrand('')
       setCategory('')
+      setGender('male')
       setUploadType(null)
       setPoints([])
 
@@ -367,6 +373,33 @@ export default function UploadScreen() {
               placeholder="Enter the image URL"
               autoCapitalize="none"
             />
+            
+            <Text style={styles.label}>Brand</Text>
+            <TextInput
+              style={styles.input}
+              value={brand}
+              onChangeText={setBrand}
+              placeholder="Enter brand name"
+            />
+            
+            <Text style={styles.label}>Category</Text>
+            <TextInput
+              style={styles.input}
+              value={category}
+              onChangeText={setCategory}
+              placeholder="e.g. Tops, Pants, Shoes"
+            />
+
+            <Text style={styles.label}>Gender *</Text>
+            <TouchableOpacity
+              style={styles.genderSelector}
+              onPress={() => setShowGenderSelector(true)}
+            >
+              <Text style={styles.genderText}>
+                {gender === 'male' ? 'Male' : 'Female'}
+              </Text>
+              <Ionicons name="chevron-down" size={24} color="#666" />
+            </TouchableOpacity>
           </View>
         ) : null}
         
@@ -389,26 +422,6 @@ export default function UploadScreen() {
             numberOfLines={4}
           />
           
-          {uploadType === 'clothes' && (
-            <>
-              <Text style={styles.label}>Brand</Text>
-              <TextInput
-                style={styles.input}
-                value={brand}
-                onChangeText={setBrand}
-                placeholder="Enter brand name"
-              />
-              
-              <Text style={styles.label}>Category</Text>
-              <TextInput
-                style={styles.input}
-                value={category}
-                onChangeText={setCategory}
-                placeholder="e.g. Tops, Pants, Shoes"
-              />
-            </>
-          )}
-
           {uploadType === 'outfit' && points.length > 0 && (
             <View style={styles.pointsList}>
               <Text style={styles.pointsTitle}>Tagged Items:</Text>
@@ -464,6 +477,49 @@ export default function UploadScreen() {
             <TouchableOpacity
               style={styles.modalCloseButton}
               onPress={() => setShowItemSelector(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showGenderSelector}
+        onRequestClose={() => setShowGenderSelector(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Gender</Text>
+            <TouchableOpacity
+              style={styles.genderOption}
+              onPress={() => {
+                setGender('male')
+                setShowGenderSelector(false)
+              }}
+            >
+              <Text style={[
+                styles.genderOptionText,
+                gender === 'male' && styles.selectedGenderText
+              ]}>Male</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.genderOption}
+              onPress={() => {
+                setGender('female')
+                setShowGenderSelector(false)
+              }}
+            >
+              <Text style={[
+                styles.genderOptionText,
+                gender === 'female' && styles.selectedGenderText
+              ]}>Female</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowGenderSelector(false)}
             >
               <Text style={styles.modalCloseButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -685,5 +741,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#000',
+  },
+  genderSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 20,
+  },
+  genderText: {
+    fontSize: 16,
+    color: '#000',
+  },
+  genderOption: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  genderOptionText: {
+    fontSize: 16,
+    color: '#000',
+    textAlign: 'center',
+  },
+  selectedGenderText: {
+    color: '#000',
+    fontWeight: 'bold',
   },
 }); 
